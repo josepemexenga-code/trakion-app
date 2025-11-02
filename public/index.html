@@ -1,93 +1,39 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<title>Trakion App | IASA</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
-<style>
-body{font-family:'Inter',sans-serif;background:#f5f6fa;margin:0;padding:0;display:flex;justify-content:center;align-items:center;height:100vh;}
-.container{background:white;padding:30px;border-radius:16px;box-shadow:0 8px 20px rgba(0,0,0,0.2);width:450px;max-height:95vh;overflow-y:auto;}
-h2{text-align:center;color:#003366;}
-input, select, textarea{width:100%;padding:10px;margin:8px 0;border-radius:8px;border:1px solid #ccc;}
-button{background:#1E88E5;color:white;padding:12px;border:none;border-radius:10px;width:100%;font-weight:600;cursor:pointer;}
-button:hover{background:#1565C0;}
-#msg{margin-top:10px;color:#E53935;text-align:center;}
-</style>
-</head>
-<body>
-<div class="container">
-  <h2>Trakion App - Solicitud de Camión</h2>
-
-  <label>Fecha de programación</label>
-  <input type="date" id="fecha"/>
-
-  <label>Nombre del chófer</label>
-  <input type="text" id="chofer"/>
-
-  <label>Licencia</label>
-  <input type="text" id="licencia"/>
-
-  <label>Celular</label>
-  <input type="text" id="celular"/>
-
-  <label>Producto</label>
-  <input type="text" id="producto"/>
-
-  <label>Código proveedor</label>
-  <input type="text" id="codigo"/>
-
-  <label>Placa</label>
-  <input type="text" id="placa"/>
-
-  <label>Nombre proveedor</label>
-  <input type="text" id="proveedor"/>
-
-  <label>Silo origen</label>
-  <input type="text" id="silo"/>
-
-  <label>Planta destino</label>
-  <input type="text" id="destino"/>
-
-  <label>Peso a cargar en Tn</label>
-  <input type="number" id="peso" step="0.01"/>
-
-  <label>Observaciones</label>
-  <textarea id="observaciones"></textarea>
-
-  <label>Correo electrónico</label>
-  <input type="email" id="email" placeholder="Correo para notificación"/>
-
-  <button onclick="enviar()">Enviar Solicitud</button>
-  <p id="msg"></p>
-</div>
-
 <script>
-async function enviar(){
-  const data={
-    fecha:document.getElementById('fecha').value,
-    chofer:document.getElementById('chofer').value,
-    licencia:document.getElementById('licencia').value,
-    celular:document.getElementById('celular').value,
-    producto:document.getElementById('producto').value,
-    codigo:document.getElementById('codigo').value,
-    placa:document.getElementById('placa').value,
-    proveedor:document.getElementById('proveedor').value,
-    silo:document.getElementById('silo').value,
-    destino:document.getElementById('destino').value,
-    peso:document.getElementById('peso').value,
-    observaciones:document.getElementById('observaciones').value,
-    email:document.getElementById('email').value
+document.getElementById("truckForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const formData = {
+    fecha_programacion: document.querySelector('input[type="date"]').value,
+    chofer: document.querySelector('input[placeholder="Nombre del chofer"]').value,
+    licencia: document.querySelector('input[placeholder="Licencia"]').value,
+    celular: document.querySelector('input[placeholder="Celular"]').value,
+    producto: document.querySelector('input[placeholder="Producto"]').value,
+    codigo_proveedor: document.querySelector('input[placeholder="Código proveedor"]').value,
+    placa: document.querySelector('input[placeholder="Placa"]').value,
+    proveedor: document.querySelector('input[placeholder="Nombre proveedor"]').value,
+    silo_origen: document.querySelector('input[placeholder="Silo origen"]').value,
+    planta_destino: document.querySelector('input[placeholder="Planta destino"]').value,
+    peso_tn: document.querySelector('input[placeholder="Peso a cargar en Tn"]').value,
+    observaciones: document.querySelector('textarea[placeholder="Observaciones"]').value,
+    correo: document.querySelector('input[placeholder="Correo electrónico"]').value
   };
-  const res=await fetch('/solicitud',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(data)
-  });
-  if(res.ok){
-    document.getElementById('msg').innerText='Solicitud enviada ✅';
-    document.querySelectorAll('input, textarea').forEach(i=>i.value='');
-  }else document.getElementById('msg').innerText='Error al enviar ❌';
-}
+
+  try {
+    const res = await fetch("/api/solicitud", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(formData)
+    });
+
+    if (res.ok) {
+      alert("✅ Solicitud enviada correctamente. Recibirá un correo de confirmación.");
+      e.target.reset();
+    } else {
+      alert("⚠ Error al enviar la solicitud.");
+    }
+  } catch (error) {
+    console.error("Error:", error);
+    alert("❌ No se pudo enviar la solicitud. Verifica tu conexión.");
+  }
+});
 </script>
-</body>
-</html>
