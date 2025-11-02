@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Trakion App | Login Admin</title>
+<style>
+body{display:flex;justify-content:center;align-items:center;height:100vh;background:#0A1F44;font-family:sans-serif;}
+.login-container{background:white;padding:30px;border-radius:16px;box-shadow:0 8px 20px rgba(0,0,0,0.3);width:350px;}
+input{width:100%;padding:10px;margin:8px 0;border-radius:8px;border:1px solid #ccc;}
+button{width:100%;padding:12px;background:#1E88E5;color:white;border:none;border-radius:10px;font-weight:600;cursor:pointer;}
+button:hover{background:#1565C0;}
+#msg{color:red;text-align:center;}
+</style>
+</head>
+<body>
+<div class="login-container">
+<h2>Login Administrador</h2>
+<input type="password" id="clave" placeholder="Clave de administrador"/>
+<button onclick="login()">Ingresar</button>
+<p id="msg"></p>
+</div>
+<script>
+async function login(){
+  const clave=document.getElementById('clave').value;
+  const res=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clave})});
+  if(res.ok) window.location.href='/admin.html';
+  else document.getElementById('msg').innerText='Clave incorrecta';
+}
+</script>
+</body>
+</html>
