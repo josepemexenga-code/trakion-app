@@ -35,20 +35,16 @@ function writeSolicitudes(arr) {
   }
 }
 
-// Configuración SMTP para Office 365 / Outlook (usa variables de entorno)
-const smtpHost = process.env.SMTP_HOST || "smtp.office365.com";
-const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
-const smtpUser = process.env.SMTP_USER; // ej: jsoliz@iasa-sa.com
-const smtpPass = process.env.SMTP_PASS; // Balanza456*
-const fromAddress = process.env.FROM_ADDRESS || smtpUser;
-const adminEmail = process.env.ADMIN_EMAIL || "jsoliz@iasa-sa.com";
-
+// Configuración SMTP (opcional, no rompe el servidor)
 let transporter = null;
+const smtpUser = process.env.SMTP_USER;
+const smtpPass = process.env.SMTP_PASS;
+
 if (smtpUser && smtpPass) {
   transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure: false, // STARTTLS
+    host: process.env.SMTP_HOST || "smtp.office365.com",
+    port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587,
+    secure: false,
     auth: { user: smtpUser, pass: smtpPass }
   });
 
@@ -56,10 +52,10 @@ if (smtpUser && smtpPass) {
     .then(() => console.log("✅ SMTP conectado correctamente"))
     .catch(err => console.warn("⚠️ Error conectando SMTP:", err.message));
 } else {
-  console.warn("⚠️ SMTP no configurado. Define SMTP_USER y SMTP_PASS para enviar correos.");
+  console.log("⚠️ SMTP no configurado. Emails no serán enviados.");
 }
 
-// POST /api/solicitud -> guardar solicitud y enviar correo
+// POST /api/solicitud -> guardar solicitud y enviar correo opcional
 app.post("/api/solicitud", async (req, res) => {
   const data = req.body;
   if (!data || Object.keys(data).length === 0)
@@ -68,64 +64,40 @@ app.post("/api/solicitud", async (req, res) => {
   data._id = Date.now().toString();
   data._createdAt = new Date().toISOString();
 
-  // Guardar en JSON
   const solicitudes = readSolicitudes();
   solicitudes.push(data);
   writeSolicitudes(solicitudes);
 
   console.log(`✅ Nueva solicitud recibida: ${data._id}`);
 
-  // Enviar correos
+  // Enviar correo solo si SMTP configurado
   if (transporter) {
     try {
       // Correo al admin
       await transporter.sendMail({
-        from: fromAddress,
-        to: adminEmail,
+        from: smtpUser,
+        to: process.env.ADMIN_EMAIL || smtpUser,
         subject: `Nueva solicitud ${data._id} - ${data.chofer || "Sin chofer"}`,
-        html: `
-          <h3>Nueva solicitud recibida</h3>
-          <p><strong>ID:</strong> ${data._id}</p>
-          <p><strong>Fecha:</strong> ${data._createdAt}</p>
-          <ul>
-            <li><strong>Chofer:</strong> ${data.chofer || "-"}</li>
-            <li><strong>Proveedor:</strong> ${data.proveedor || "-"}</li>
-            <li><strong>Placa:</strong> ${data.placa || "-"}</li>
-            <li><strong>Producto:</strong> ${data.producto || "-"}</li>
-            <li><strong>Peso tn:</strong> ${data.peso_tn || "-"}</li>
-            <li><strong>Correo solicitante:</strong> ${data.correo || "-"}</li>
-          </ul>
-          <pre>${JSON.stringify(data, null, 2)}</pre>
-        `
+        html: `<pre>${JSON.stringify(data, null, 2)}</pre>`
       });
 
       // Correo al solicitante
       if (data.correo) {
         await transporter.sendMail({
-          from: fromAddress,
+          from: smtpUser,
           to: data.correo,
           subject: `Confirmación de solicitud ${data._id}`,
-          html: `
-            <p>Hola ${data.chofer || ""},</p>
-            <p>Hemos recibido tu solicitud con ID <strong>${data._id}</strong>. Detalles:</p>
-            <ul>
-              <li>Fecha programación: ${data.fecha_programacion || "-"}</li>
-              <li>Proveedor: ${data.proveedor || "-"}</li>
-              <li>Placa: ${data.placa || "-"}</li>
-            </ul>
-            <p>Atte. Equipo IASA</p>
-          `
+          html: `<p>Solicitud recibida con ID: ${data._id}</p>`
         });
       }
 
       console.log(`✅ Correos enviados para solicitud ${data._id}`);
     } catch (err) {
-      console.error("❌ Error enviando correo:", err);
-      return res.status(200).send({ message: "Solicitud guardada, fallo envío de correo", id: data._id, emailError: err.message });
+      console.warn("⚠️ Error enviando correo, pero la solicitud se guardó:", err.message);
     }
   }
 
-  return res.status(200).send({ message: "Solicitud guardada", id: data._id });
+  res.status(200).send({ message: "Solicitud guardada", id: data._id });
 });
 
 // GET /solicitudes -> ver todas
@@ -136,8 +108,7 @@ app.get("/solicitudes", (req, res) => {
 // GET /export -> exportar Excel
 app.get("/export", (req, res) => {
   const solicitudes = readSolicitudes();
-  if (!solicitudes || solicitudes.length === 0)
-    return res.status(404).send("No hay solicitudes para exportar");
+  if (!solicitudes.length) return res.status(404).send("No hay solicitudes para exportar");
 
   const data = solicitudes.map(s => ({
     ID: s._id,
@@ -151,12 +122,11 @@ app.get("/export", (req, res) => {
     Observaciones: s.observaciones
   }));
 
-  const worksheet = XLSX.utils.json_to_sheet(data);
   const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.json_to_sheet(data);
   XLSX.utils.book_append_sheet(workbook, worksheet, "Solicitudes");
 
   const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
-
   res.setHeader("Content-Disposition", "attachment; filename=solicitudes.xlsx");
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.send(buffer);
@@ -172,3 +142,4 @@ app.get("/", (req, res) => {
 // Iniciar servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
+
