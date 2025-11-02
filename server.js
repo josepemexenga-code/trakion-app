@@ -27,6 +27,7 @@ function readSolicitudes() {
     return [];
   }
 }
+
 function writeSolicitudes(arr) {
   try {
     fs.writeFileSync(FILE_PATH, JSON.stringify(arr, null, 2), "utf8");
@@ -35,7 +36,7 @@ function writeSolicitudes(arr) {
   }
 }
 
-// Configuración SMTP (opcional, no rompe el servidor)
+// Configuración SMTP (opcional)
 let transporter = null;
 const smtpUser = process.env.SMTP_USER;
 const smtpPass = process.env.SMTP_PASS;
@@ -57,20 +58,21 @@ if (smtpUser && smtpPass) {
 
 // POST /api/solicitud -> guardar solicitud y enviar correo opcional
 app.post("/api/solicitud", async (req, res) => {
-  const data = req.body;
-  if (!data || Object.keys(data).length === 0)
-    return res.status(400).send({ error: "Sin datos en el body" });
-
+  const data = req.body || {};
   data._id = Date.now().toString();
   data._createdAt = new Date().toISOString();
 
-  const solicitudes = readSolicitudes();
-  solicitudes.push(data);
-  writeSolicitudes(solicitudes);
+  // Guardar solicitud
+  try {
+    const solicitudes = readSolicitudes();
+    solicitudes.push(data);
+    writeSolicitudes(solicitudes);
+    console.log(`✅ Nueva solicitud recibida: ${data._id}`);
+  } catch (err) {
+    console.error("❌ Error guardando solicitud:", err);
+  }
 
-  console.log(`✅ Nueva solicitud recibida: ${data._id}`);
-
-  // Enviar correo solo si SMTP configurado
+  // Intentar enviar correo si SMTP configurado
   if (transporter) {
     try {
       // Correo al admin
@@ -97,6 +99,7 @@ app.post("/api/solicitud", async (req, res) => {
     }
   }
 
+  // Responder siempre 200
   res.status(200).send({ message: "Solicitud guardada", id: data._id });
 });
 
@@ -142,4 +145,3 @@ app.get("/", (req, res) => {
 // Iniciar servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
-
