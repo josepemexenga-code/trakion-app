@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import nodemailer from "nodemailer";
 import cors from "cors";
+import XLSX from "xlsx";
 
 const app = express();
 
@@ -12,10 +13,10 @@ app.use(cors());
 app.use(express.static("public"));
 app.use(bodyParser.json());
 
-// Archivo de persistencia (local)
+// Archivo local para persistencia
 const FILE_PATH = path.join(process.cwd(), "solicitudes.json");
 
-// Helpers para leer/escribir el JSON
+// Helpers para leer/escribir JSON
 function readSolicitudes() {
   try {
     if (!fs.existsSync(FILE_PATH)) return [];
@@ -34,115 +35,134 @@ function writeSolicitudes(arr) {
   }
 }
 
-// Configuración SMTP via env vars
-const smtpHost = process.env.SMTP_HOST;
-const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : undefined;
-const smtpUser = process.env.SMTP_USER;
-const smtpPass = process.env.SMTP_PASS;
-const fromAddress = process.env.FROM_ADDRESS || "no-reply@iasa-sa.com";
+// Configuración SMTP para Office 365 / Outlook (usa variables de entorno)
+const smtpHost = process.env.SMTP_HOST || "smtp.office365.com";
+const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
+const smtpUser = process.env.SMTP_USER; // ej: jsoliz@iasa-sa.com
+const smtpPass = process.env.SMTP_PASS; // Balanza456*
+const fromAddress = process.env.FROM_ADDRESS || smtpUser;
 const adminEmail = process.env.ADMIN_EMAIL || "jsoliz@iasa-sa.com";
 
 let transporter = null;
-if (smtpHost && smtpPort && smtpUser && smtpPass) {
+if (smtpUser && smtpPass) {
   transporter = nodemailer.createTransport({
     host: smtpHost,
     port: smtpPort,
-    secure: smtpPort === 465,
+    secure: false, // STARTTLS
     auth: { user: smtpUser, pass: smtpPass }
   });
 
   transporter.verify()
     .then(() => console.log("✅ SMTP conectado correctamente"))
-    .catch((err) => console.warn("⚠️ Error conectando SMTP (verifica vars):", err.message));
+    .catch(err => console.warn("⚠️ Error conectando SMTP:", err.message));
 } else {
-  console.warn("⚠️ SMTP no configurado. Define SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS para habilitar envíos.");
+  console.warn("⚠️ SMTP no configurado. Define SMTP_USER y SMTP_PASS para enviar correos.");
 }
 
-// POST /api/solicitud -> guarda y (opcional) envía email
+// POST /api/solicitud -> guardar solicitud y enviar correo
 app.post("/api/solicitud", async (req, res) => {
   const data = req.body;
-  if (!data || Object.keys(data).length === 0) {
+  if (!data || Object.keys(data).length === 0)
     return res.status(400).send({ error: "Sin datos en el body" });
-  }
 
-  // Enriquecer con id y timestamp
   data._id = Date.now().toString();
   data._createdAt = new Date().toISOString();
 
-  // Guardar en archivo
+  // Guardar en JSON
   const solicitudes = readSolicitudes();
   solicitudes.push(data);
   writeSolicitudes(solicitudes);
 
   console.log(`✅ Nueva solicitud recibida: ${data._id}`);
 
-  // Intentar enviar correos si transporter está disponible
+  // Enviar correos
   if (transporter) {
     try {
       // Correo al admin
-      const adminSubject = `Nueva solicitud ${data._id} - ${data.chofer || "Sin chofer"}`;
-      const adminHtml = `
-        <h3>Nueva solicitud recibida</h3>
-        <p><strong>ID:</strong> ${data._id}</p>
-        <p><strong>Fecha:</strong> ${data._createdAt}</p>
-        <ul>
-          <li><strong>Chofer:</strong> ${data.chofer || "-"}</li>
-          <li><strong>Proveedor:</strong> ${data.proveedor || "-"}</li>
-          <li><strong>Placa:</strong> ${data.placa || "-"}</li>
-          <li><strong>Producto:</strong> ${data.producto || "-"}</li>
-          <li><strong>Peso tn:</strong> ${data.peso_tn || "-"}</li>
-          <li><strong>Correo solicitante:</strong> ${data.correo || "-"}</li>
-        </ul>
-        <pre>${JSON.stringify(data, null, 2)}</pre>
-      `;
-
       await transporter.sendMail({
         from: fromAddress,
         to: adminEmail,
-        subject: adminSubject,
-        html: adminHtml
+        subject: `Nueva solicitud ${data._id} - ${data.chofer || "Sin chofer"}`,
+        html: `
+          <h3>Nueva solicitud recibida</h3>
+          <p><strong>ID:</strong> ${data._id}</p>
+          <p><strong>Fecha:</strong> ${data._createdAt}</p>
+          <ul>
+            <li><strong>Chofer:</strong> ${data.chofer || "-"}</li>
+            <li><strong>Proveedor:</strong> ${data.proveedor || "-"}</li>
+            <li><strong>Placa:</strong> ${data.placa || "-"}</li>
+            <li><strong>Producto:</strong> ${data.producto || "-"}</li>
+            <li><strong>Peso tn:</strong> ${data.peso_tn || "-"}</li>
+            <li><strong>Correo solicitante:</strong> ${data.correo || "-"}</li>
+          </ul>
+          <pre>${JSON.stringify(data, null, 2)}</pre>
+        `
       });
 
-      // Correo al solicitante (si hay correo)
+      // Correo al solicitante
       if (data.correo) {
-        const userSubject = `Confirmación de solicitud ${data._id}`;
-        const userHtml = `
-          <p>Hola ${data.chofer || ""},</p>
-          <p>Hemos recibido tu solicitud con ID <strong>${data._id}</strong>. Detalles principales:</p>
-          <ul>
-            <li>Fecha programacion: ${data.fecha_programacion || "-"}</li>
-            <li>Proveedor: ${data.proveedor || "-"}</li>
-            <li>Placa: ${data.placa || "-"}</li>
-          </ul>
-          <p>Atte. Equipo IASA</p>
-        `;
         await transporter.sendMail({
           from: fromAddress,
           to: data.correo,
-          subject: userSubject,
-          html: userHtml
+          subject: `Confirmación de solicitud ${data._id}`,
+          html: `
+            <p>Hola ${data.chofer || ""},</p>
+            <p>Hemos recibido tu solicitud con ID <strong>${data._id}</strong>. Detalles:</p>
+            <ul>
+              <li>Fecha programación: ${data.fecha_programacion || "-"}</li>
+              <li>Proveedor: ${data.proveedor || "-"}</li>
+              <li>Placa: ${data.placa || "-"}</li>
+            </ul>
+            <p>Atte. Equipo IASA</p>
+          `
         });
       }
 
       console.log(`✅ Correos enviados para solicitud ${data._id}`);
     } catch (err) {
       console.error("❌ Error enviando correo:", err);
-      // Devolver 200 (la solicitud se guardó) pero informar el error en la respuesta
       return res.status(200).send({ message: "Solicitud guardada, fallo envío de correo", id: data._id, emailError: err.message });
     }
   }
 
-  // Responder éxito
   return res.status(200).send({ message: "Solicitud guardada", id: data._id });
 });
 
-// GET /solicitudes -> ver todas las solicitudes (sin auth)
+// GET /solicitudes -> ver todas
 app.get("/solicitudes", (req, res) => {
-  const solicitudes = readSolicitudes();
-  res.json(solicitudes);
+  res.json(readSolicitudes());
 });
 
-// Fallback para raíz
+// GET /export -> exportar Excel
+app.get("/export", (req, res) => {
+  const solicitudes = readSolicitudes();
+  if (!solicitudes || solicitudes.length === 0)
+    return res.status(404).send("No hay solicitudes para exportar");
+
+  const data = solicitudes.map(s => ({
+    ID: s._id,
+    Fecha: s._createdAt,
+    Chofer: s.chofer,
+    Proveedor: s.proveedor,
+    Placa: s.placa,
+    Producto: s.producto,
+    Peso: s.peso_tn,
+    Correo: s.correo,
+    Observaciones: s.observaciones
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(data);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Solicitudes");
+
+  const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+
+  res.setHeader("Content-Disposition", "attachment; filename=solicitudes.xlsx");
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.send(buffer);
+});
+
+// Fallback raíz
 app.get("/", (req, res) => {
   const indexPath = path.join(process.cwd(), "public", "index.html");
   if (fs.existsSync(indexPath)) return res.sendFile(indexPath);
