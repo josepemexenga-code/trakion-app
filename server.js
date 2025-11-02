@@ -6,14 +6,16 @@ import nodemailer from "nodemailer";
 import cors from "cors";
 
 const app = express();
+
+// Middlewares
+app.use(cors());
 app.use(express.static("public"));
 app.use(bodyParser.json());
-app.use(cors());
 
-// PATH archivo
+// Archivo de persistencia (local)
 const FILE_PATH = path.join(process.cwd(), "solicitudes.json");
 
-// Helper: leer/crear archivo
+// Helpers para leer/escribir el JSON
 function readSolicitudes() {
   try {
     if (!fs.existsSync(FILE_PATH)) return [];
@@ -32,13 +34,12 @@ function writeSolicitudes(arr) {
   }
 }
 
-// Configurar transporter con variables de entorno
-// Define en Render: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, FROM_ADDRESS, ADMIN_EMAIL
+// Configuración SMTP via env vars
 const smtpHost = process.env.SMTP_HOST;
-const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : undefined;
+const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : undefined;
 const smtpUser = process.env.SMTP_USER;
 const smtpPass = process.env.SMTP_PASS;
-const fromAddress = process.env.FROM_ADDRESS || "no-reply@tuempresa.com";
+const fromAddress = process.env.FROM_ADDRESS || "no-reply@iasa-sa.com";
 const adminEmail = process.env.ADMIN_EMAIL || "jsoliz@iasa-sa.com";
 
 let transporter = null;
@@ -46,27 +47,25 @@ if (smtpHost && smtpPort && smtpUser && smtpPass) {
   transporter = nodemailer.createTransport({
     host: smtpHost,
     port: smtpPort,
-    secure: smtpPort === 465, // true para 465, false para otros puertos
-    auth: {
-      user: smtpUser,
-      pass: smtpPass
-    }
+    secure: smtpPort === 465,
+    auth: { user: smtpUser, pass: smtpPass }
   });
 
-  // Opcional: verificar conexión al iniciar
   transporter.verify()
     .then(() => console.log("✅ SMTP conectado correctamente"))
-    .catch((err) => console.error("⚠️ Error conectando SMTP:", err.message));
+    .catch((err) => console.warn("⚠️ Error conectando SMTP (verifica vars):", err.message));
 } else {
-  console.warn("⚠️ No hay configuración SMTP completa. No se enviarán correos. Define SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS en las env vars.");
+  console.warn("⚠️ SMTP no configurado. Define SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS para habilitar envíos.");
 }
 
-// Ruta para recibir la solicitud
+// POST /api/solicitud -> guarda y (opcional) envía email
 app.post("/api/solicitud", async (req, res) => {
   const data = req.body;
-  if (!data) return res.status(400).send({ error: "Sin datos" });
+  if (!data || Object.keys(data).length === 0) {
+    return res.status(400).send({ error: "Sin datos en el body" });
+  }
 
-  // Agregar timestamp y id sencillo
+  // Enriquecer con id y timestamp
   data._id = Date.now().toString();
   data._createdAt = new Date().toISOString();
 
@@ -75,12 +74,12 @@ app.post("/api/solicitud", async (req, res) => {
   solicitudes.push(data);
   writeSolicitudes(solicitudes);
 
-  console.log("✅ Nueva solicitud recibida:", data._id);
+  console.log(`✅ Nueva solicitud recibida: ${data._id}`);
 
-  // Enviar correo (si transporter está configurado)
+  // Intentar enviar correos si transporter está disponible
   if (transporter) {
     try {
-      // Correo al ADMIN (interno)
+      // Correo al admin
       const adminSubject = `Nueva solicitud ${data._id} - ${data.chofer || "Sin chofer"}`;
       const adminHtml = `
         <h3>Nueva solicitud recibida</h3>
@@ -104,18 +103,17 @@ app.post("/api/solicitud", async (req, res) => {
         html: adminHtml
       });
 
-      // Correo al solicitante (si envió correo)
+      // Correo al solicitante (si hay correo)
       if (data.correo) {
         const userSubject = `Confirmación de solicitud ${data._id}`;
         const userHtml = `
           <p>Hola ${data.chofer || ""},</p>
-          <p>Hemos recibido tu solicitud con ID <strong>${data._id}</strong>. Detalles:</p>
+          <p>Hemos recibido tu solicitud con ID <strong>${data._id}</strong>. Detalles principales:</p>
           <ul>
             <li>Fecha programacion: ${data.fecha_programacion || "-"}</li>
             <li>Proveedor: ${data.proveedor || "-"}</li>
             <li>Placa: ${data.placa || "-"}</li>
           </ul>
-          <p>Si necesitas asistencia responde a este correo.</p>
           <p>Atte. Equipo IASA</p>
         `;
         await transporter.sendMail({
@@ -125,29 +123,32 @@ app.post("/api/solicitud", async (req, res) => {
           html: userHtml
         });
       }
-      console.log("✅ Correos (admin/usuario) enviados para:", data._id);
+
+      console.log(`✅ Correos enviados para solicitud ${data._id}`);
     } catch (err) {
       console.error("❌ Error enviando correo:", err);
-      // No fallamos la petición: devolvemos 200 pero avisamos en body que hubo error en email
-      return res.status(200).send({ message: "Solicitud guardada, pero fallo envío de correo", error: err.message });
+      // Devolver 200 (la solicitud se guardó) pero informar el error en la respuesta
+      return res.status(200).send({ message: "Solicitud guardada, fallo envío de correo", id: data._id, emailError: err.message });
     }
   }
 
-  res.status(200).send({ message: "Solicitud guardada", id: data._id });
+  // Responder éxito
+  return res.status(200).send({ message: "Solicitud guardada", id: data._id });
 });
 
-// Endpoint para ver solicitudes (sin autenticación por simplicidad)
+// GET /solicitudes -> ver todas las solicitudes (sin auth)
 app.get("/solicitudes", (req, res) => {
   const solicitudes = readSolicitudes();
   res.json(solicitudes);
 });
 
-// Fallback raíz
+// Fallback para raíz
 app.get("/", (req, res) => {
   const indexPath = path.join(process.cwd(), "public", "index.html");
   if (fs.existsSync(indexPath)) return res.sendFile(indexPath);
   res.send("<h1>Trakion App - Servidor arriba</h1><p>No hay public/index.html</p>");
 });
 
+// Iniciar servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
