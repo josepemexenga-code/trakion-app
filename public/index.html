@@ -3,12 +3,113 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Trakion App - IASA</title>
+  <title>Trakion App - Envío de solicitudes</title>
+  <style>
+    body{font-family:Inter,system-ui,Arial;margin:24px}
+    form{max-width:700px;gap:8px;display:grid}
+    input,textarea,button{padding:8px;font-size:14px}
+  </style>
 </head>
 <body>
-  <h1>Trakion App</h1>
-  <p>Servidor: OK</p>
-  <p>API: <a href="/api/solicitud">POST /api/solicitud</a> (usar POST para enviar solicitudes)</p>
+  <h1>Trakion App - Envío de solicitudes</h1>
+
+  <form id="truckForm">
+    <label>Fecha programacion
+      <input type="date" name="fecha_programacion" required>
+    </label>
+
+    <label>Nombre del chofer
+      <input type="text" name="chofer" placeholder="Nombre del chofer" required>
+    </label>
+
+    <label>Licencia
+      <input type="text" name="licencia" placeholder="Licencia">
+    </label>
+
+    <label>Celular
+      <input type="tel" name="celular" placeholder="Celular">
+    </label>
+
+    <label>Producto
+      <input type="text" name="producto" placeholder="Producto">
+    </label>
+
+    <label>Código proveedor
+      <input type="text" name="codigo_proveedor" placeholder="Código proveedor">
+    </label>
+
+    <label>Placa
+      <input type="text" name="placa" placeholder="Placa">
+    </label>
+
+    <label>Nombre proveedor
+      <input type="text" name="proveedor" placeholder="Nombre proveedor">
+    </label>
+
+    <label>Silo origen
+      <input type="text" name="silo_origen" placeholder="Silo origen">
+    </label>
+
+    <label>Planta destino
+      <input type="text" name="planta_destino" placeholder="Planta destino">
+    </label>
+
+    <label>Peso a cargar en Tn
+      <input type="number" name="peso_tn" placeholder="Peso a cargar en Tn" step="0.01">
+    </label>
+
+    <label>Correo electrónico
+      <input type="email" name="correo" placeholder="Correo electrónico">
+    </label>
+
+    <label>Observaciones
+      <textarea name="observaciones" placeholder="Observaciones"></textarea>
+    </label>
+
+    <button type="submit">Enviar solicitud</button>
+  </form>
+
+  <script>
+    // Nos aseguramos de ejecutar cuando el DOM está listo
+    document.addEventListener("DOMContentLoaded", () => {
+      const form = document.getElementById("truckForm");
+      if (!form) {
+        console.error("No se encontró el formulario #truckForm");
+        return;
+      }
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        // Construir objeto a partir de los campos del formulario (más robusto)
+        const formData = Object.fromEntries(new FormData(form).entries());
+
+        // Convertir campos numéricos/fechas si es necesario
+        if (formData.peso_tn) formData.peso_tn = parseFloat(formData.peso_tn) || 0;
+
+        try {
+          const res = await fetch("/api/solicitud", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(formData)
+          });
+
+          if (res.ok) {
+            alert("✅ Solicitud enviada correctamente. Recibirá un correo de confirmación.");
+            form.reset();
+          } else {
+            const text = await res.text().catch(()=>null);
+            console.error("Respuesta no OK:", res.status, text);
+            alert("⚠ Error al enviar la solicitud.");
+          }
+        } catch (error) {
+          console.error("Error al enviar solicitud:", error);
+          alert("❌ No se pudo enviar la solicitud. Verifica tu conexión o revisa la consola del navegador.");
+        }
+      });
+    });
+  </script>
 </body>
 </html>
+
 
