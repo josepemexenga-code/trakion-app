@@ -1,39 +1,14 @@
-<script>
-document.getElementById("truckForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Trakion App - IASA</title>
+</head>
+<body>
+  <h1>Trakion App</h1>
+  <p>Servidor: OK</p>
+  <p>API: <a href="/api/solicitud">POST /api/solicitud</a> (usar POST para enviar solicitudes)</p>
+</body>
+</html>
 
-  const formData = {
-    fecha_programacion: document.querySelector('input[type="date"]').value,
-    chofer: document.querySelector('input[placeholder="Nombre del chofer"]').value,
-    licencia: document.querySelector('input[placeholder="Licencia"]').value,
-    celular: document.querySelector('input[placeholder="Celular"]').value,
-    producto: document.querySelector('input[placeholder="Producto"]').value,
-    codigo_proveedor: document.querySelector('input[placeholder="Código proveedor"]').value,
-    placa: document.querySelector('input[placeholder="Placa"]').value,
-    proveedor: document.querySelector('input[placeholder="Nombre proveedor"]').value,
-    silo_origen: document.querySelector('input[placeholder="Silo origen"]').value,
-    planta_destino: document.querySelector('input[placeholder="Planta destino"]').value,
-    peso_tn: document.querySelector('input[placeholder="Peso a cargar en Tn"]').value,
-    observaciones: document.querySelector('textarea[placeholder="Observaciones"]').value,
-    correo: document.querySelector('input[placeholder="Correo electrónico"]').value
-  };
-
-  try {
-    const res = await fetch("/api/solicitud", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(formData)
-    });
-
-    if (res.ok) {
-      alert("✅ Solicitud enviada correctamente. Recibirá un correo de confirmación.");
-      e.target.reset();
-    } else {
-      alert("⚠ Error al enviar la solicitud.");
-    }
-  } catch (error) {
-    console.error("Error:", error);
-    alert("❌ No se pudo enviar la solicitud. Verifica tu conexión.");
-  }
-});
-</script>
